@@ -1,2 +1,2 @@
 debug:
-	gcc -Wall -Wextra -pedantic main.c -o huffman-compress
+	gcc -Wall -Wextra -pedantic main.c -g -o huffman-compress
