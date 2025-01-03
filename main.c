@@ -5,10 +5,25 @@
 #include <unistd.h>
 
 #define BUF_INIT_SIZE 128
-#define OCCURENCES_SIZE 256
+#define OCCURENCES_SIZE 128
+
+typedef struct {
+	char element;
+	int freq;
+} LeafNode;
+
+typedef struct {
+	LeafNode* leafnodes;
+	int size;
+	int capacity;
+} HuffTree;
 
 void die(const char *fmt, ...);
-char* dump_file(FILE* fp);
+void count_freq(int* occurences, const char* buffer);
+char get_max(int* occurences, int size);
+HuffTree priority_sort(int* occurences, int size);
+void _log_occurences(int* occurences);
+void _log_tree(HuffTree* tree);
 
 void die(const char *fmt, ...) {
 	va_list ap;
@@ -35,11 +50,46 @@ void count_freq(int* occurences, const char* buffer) {
 	}
 }
 
-void _log_occurences(int* occurences, int size) {
+char get_max(int* occurences, int size) {
+	int largest = 0;
+
 	for (int i = 0; i < size; i++) {
+		if (occurences[i] > occurences[largest]) {
+			largest = i;
+		}
+	}
+
+	return (char)largest;
+}
+
+HuffTree priority_sort(int* occurences, int size) {
+	LeafNode* array = malloc(size * sizeof(LeafNode));
+	HuffTree tree = (HuffTree) {array, 0, size};
+
+	for (int i = 0; i < size; i++) {
+		char maxfreqchar = get_max(occurences, size);
+		if (occurences[(int)maxfreqchar] == 0)
+			return tree;
+
+		tree.leafnodes[i] = (LeafNode) {maxfreqchar, occurences[(int)maxfreqchar]};
+		tree.size++;
+		occurences[(int)maxfreqchar] = 0; // remove char from occurences after add to array
+	}
+
+	return tree;
+}
+
+void _log_occurences(int* occurences) {
+	for (int i = 0; i < OCCURENCES_SIZE; i++) {
 		if (occurences[i] != 0) {
 			printf("%c:%d\n", i, occurences[i]);
 		}
+	}
+}
+
+void _log_tree(HuffTree* tree) {
+	for (int i = 0; i < tree->size; i++) {
+		printf("%c:%d\n", tree->leafnodes[i].element, tree->leafnodes[i].freq);
 	}
 }
 
@@ -61,9 +111,11 @@ int main(int argc, char** argv) {
 
 	while (fread(buffer, 1, buf_size, fp)) {
 		count_freq(occurences, buffer);
+		HuffTree tree = priority_sort(occurences, OCCURENCES_SIZE);
+		_log_tree(&tree);
+		free(tree.leafnodes);
 	}
 
-	_log_occurences(occurences, OCCURENCES_SIZE);
 	free(occurences);
 	free(buffer);
 	return 0;
