@@ -211,6 +211,17 @@ void _log_tree(HuffTree* tree) {
 	}
 }
 
+void free_node(Node* node) {
+	node->element = '\0';
+	node->weight = 0;
+	if (node->right != NULL) {
+		free_node(node->right);
+	}
+	if (node->left != NULL) {
+		free_node(node->left);
+	}
+}
+
 void free_queu(MinPriorityQueu* queu) {
 	for (int i = 0; i < queu->size; i++) {
 		free(queu->elements[i]);
@@ -221,7 +232,7 @@ void free_queu(MinPriorityQueu* queu) {
 }
 
 void free_tree(HuffTree* tree) {
-	free(tree->root);
+	free_node(tree->root);
 	tree->size = 0;
 	free(tree);
 }
