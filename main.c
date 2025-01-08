@@ -18,7 +18,7 @@ typedef struct Node {
 } Node;
 
 typedef struct HuffTree {
-	Node** nodes;
+	Node* root;
 	int size;
 } HuffTree;
 
@@ -108,8 +108,7 @@ Node* init_internal_node(Node* left, Node* right) {
 }
 
 HuffTree* init_tree() {
-	HuffTree* tree = malloc(sizeof(Node**) + sizeof(int));
-	tree->nodes = malloc(sizeof(Node*) * TREE_INIT_SIZE);
+	HuffTree* tree = malloc(sizeof(Node*) + sizeof(int));
 	tree->size = 0;
 
 	return tree;
@@ -186,17 +185,25 @@ HuffTree* build_huff_tree(MinPriorityQueu* queu) {
 		internal_node = get_internal_node_from_queu(queu);
 	}
 
-	tree->nodes[0] = init_node(queu->elements[0]->weight + internal_node->weight);
-	tree->nodes[0]->left = queu->elements[0];
-	tree->nodes[0]->right = internal_node;
+	tree->root = init_node(queu->elements[0]->weight + internal_node->weight);
+	tree->root->left = queu->elements[0];
+	tree->root->right = internal_node;
+	tree->size = get_size(tree);
 
 	return tree;
+}
+
+// left of ith element is 2 * i + 1
+// right of ith element is 2 * i + 2
+// TODO:
+Node* node_from_tree(HuffTree* tree, int i) {
+	return tree->root->right;
 }
 
 void _log_tree(HuffTree* tree) {
 	Node* current_node;
 	for (int i = tree->size - 1; i >= 0; i++) {
-		current_node = tree->nodes[i];
+		current_node = node_from_tree(tree, i);
 		printf("internal node %d:%d\n", i, current_node->weight);
 		printf("with children left (%c:%d) and right (%c:%d)\n", 
 				current_node->left->element, current_node->left->weight,
@@ -214,7 +221,7 @@ void free_queu(MinPriorityQueu* queu) {
 }
 
 void free_tree(HuffTree* tree) {
-	free(tree->nodes);
+	free(tree->root);
 	tree->size = 0;
 	free(tree);
 }
