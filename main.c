@@ -13,22 +13,17 @@
 typedef struct Node {
 	char element;
 	int weight;
+	struct Node* left;
+	struct Node* right;
 } Node;
 
-typedef struct Leafnode {
-	char element;
-	int weight;
-	Node* left;
-	Node* right;
-} Leafnode;
-
 typedef struct HuffTree {
-	Leafnode* leafnodes;
+	Node** nodes;
 	int size;
 } HuffTree;
 
 typedef struct MinPriorityQueu {
-	Leafnode** elements;
+	Node** elements;
 	int size;
 	int capacity;
 } MinPriorityQueu;
@@ -93,44 +88,36 @@ int min_in_occ(int* occurences) {
 	return min;
 }
 
-Node* init_node(char element, int weight) {
+Node* init_node(int weight) {
 	Node* node = malloc(sizeof(Node));
-	node->element = element;
-	node->weight = weight;
-
-	return node;
-}
-
-Leafnode* init_leafnode(char element, int weight) {
-	Leafnode* node = malloc(sizeof(Leafnode));
-	node->element = element;
+	node->element = '\0';
 	node->weight = weight;
 	node->right = node->left = NULL;
 
 	return node;
 }
 
-Leafnode* init_internal_node(Leafnode* left, Leafnode* right) {
-	Leafnode* internal_node = malloc(sizeof(Leafnode));
+Node* init_internal_node(Node* left, Node* right) {
+	Node* internal_node = malloc(sizeof(Node));
 	internal_node->element = '\0';
 	internal_node->weight = left->weight + right->weight;
-	internal_node->left = init_node(left->element, left->weight);
-	internal_node->right = init_node(right->element, right->weight);
+	internal_node->left = left;
+	internal_node->right = right;
 
 	return internal_node;
 }
 
 HuffTree* init_tree() {
-	HuffTree* tree = malloc(sizeof(Leafnode*) + sizeof(int));
-	tree->leafnodes = malloc(sizeof(Leafnode) * TREE_INIT_SIZE);
+	HuffTree* tree = malloc(sizeof(Node**) + sizeof(int));
+	tree->nodes = malloc(sizeof(Node*) * TREE_INIT_SIZE);
 	tree->size = 0;
 
 	return tree;
 }
 
 MinPriorityQueu* init_queu() {
-	MinPriorityQueu* queu = malloc(sizeof(Leafnode*) + 2 * sizeof(int));
-	queu->elements = malloc(QUEU_INIT_SIZE * sizeof(Leafnode));
+	MinPriorityQueu* queu = malloc(sizeof(Node*) + 2 * sizeof(int));
+	queu->elements = malloc(QUEU_INIT_SIZE * sizeof(Node));
 	queu->size = 0;
 	queu->capacity = QUEU_INIT_SIZE;
 
@@ -143,7 +130,8 @@ MinPriorityQueu* add_occ_to_queu(MinPriorityQueu* queu, const char c, const int 
 		queu = realloc(queu, queu->size);
 	}
 
-	queu->elements[queu->size] = init_leafnode(c, freq);
+	queu->elements[queu->size] = init_node(freq);
+	queu->elements[queu->size]->element = c;
 	queu->size++;
 
 	return queu;
@@ -161,6 +149,7 @@ MinPriorityQueu* priority_sort(int* occurences) {
 }
 
 void remove_node_in_queu(MinPriorityQueu* queu, int i) {
+	free(queu->elements[i]);
 	for (int j = i; j < (queu->size - 1); j++) {
 		queu->elements[j] = queu->elements[j+1];
 	}
@@ -171,50 +160,43 @@ void remove_node_in_queu(MinPriorityQueu* queu, int i) {
 
 void rearrange_queu(MinPriorityQueu* queu) {
 	for (int i = 0; i < queu->size; i++) {
-		if (queu->elements[i] > queu->elements[i+1]) {
-			Leafnode* tmp = queu->elements[i];
+		if (queu->elements[i]->weight > queu->elements[i+1]->weight) {
+			Node* tmp = queu->elements[i];
 			queu->elements[i] = queu->elements[i+1];
 			queu->elements[i+1] = tmp;
 		}
 	}
 }
 
-Leafnode* get_internal_node_from_queu(MinPriorityQueu* queu) {
-	Leafnode* internal_node = init_internal_node(queu->elements[0], queu->elements[1]);
+Node* get_internal_node_from_queu(MinPriorityQueu* queu) {
+	Node* internal_node = init_internal_node(queu->elements[0], queu->elements[1]);
 	remove_node_in_queu(queu, 0);
+	free(queu->elements[0]);
 	queu->elements[0] = internal_node;
 	rearrange_queu(queu);
 
 	return internal_node;
 }
 
-void add_internal_node_to_tree(HuffTree* tree, Leafnode* internal_node) {
-	tree->leafnodes[tree->size] = *internal_node;
-	tree->size++;
-}
-
 HuffTree* build_huff_tree(MinPriorityQueu* queu) {
 	HuffTree* tree = init_tree();
-	Node* right;
-	Node* left;
-	Leafnode* internal_node;
+	Node* internal_node;
 
 	while (queu->size > 1) {
 		internal_node = get_internal_node_from_queu(queu);
-		left = internal_node->left;
-		right = internal_node->right;
-
-		add_internal_node_to_tree(tree, internal_node);
 	}
 
-	add_internal_node_to_tree(tree, queu->elements[0]);
+	tree->nodes[0] = init_node(queu->elements[0]->weight + internal_node->weight);
+	tree->nodes[0]->left = queu->elements[0];
+	tree->nodes[0]->right = internal_node;
+
 	return tree;
 }
 
 void _log_tree(HuffTree* tree) {
-	Leafnode* current_node;
+	Node* current_node;
 	for (int i = tree->size - 1; i >= 0; i++) {
-		current_node = &(tree->leafnodes[i]);
+		current_node = tree->nodes[i];
 		printf("internal node %d:%d\n", i, current_node->weight);
 		printf("with children left (%c:%d) and right (%c:%d)\n", 
 				current_node->left->element, current_node->left->weight,
@@ -232,7 +214,7 @@ void free_queu(MinPriorityQueu* queu) {
 }
 
 void free_tree(HuffTree* tree) {
-	free(tree->leafnodes);
+	free(tree->nodes);
 	tree->size = 0;
 	free(tree);
 }
