@@ -1,0 +1,6 @@
+tags*
+huffman-compress
+test*
+.vscode
+build
+*.exe
