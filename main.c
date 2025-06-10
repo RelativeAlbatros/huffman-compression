@@ -5,8 +5,18 @@
 #include <unistd.h>
 #include <stdbool.h>
 
+#define VERSION "0.1"
+#define HELP_MESSAGE \
+	"hcom " VERSION  \
+	"	-h	--help:  shows this message" \
+	"	-d	--debug: debug mode"
+
+#define DEBUG_FLAG 1
+
+#define IS_DEBUG(flags) (flags & DEBUG_FLAG)
+
 #define BUF_INIT_SIZE 2048
-#define OCC_SIZE 128
+#define OCC_SIZE CHAR_MAX
 #define QUEU_INIT_SIZE 2048
 #define TREE_INIT_SIZE 32
 
@@ -17,16 +27,46 @@ typedef struct Node {
 	struct Node* right;
 } Node;
 
+typedef struct InputData {
+	int flags;
+	char* filename;
+} InputData;
+
 typedef struct HuffTree {
 	Node* root;
 	int size;
 } HuffTree;
 
-typedef struct MinPriorityQueu {
+typedef struct MinPriorityQueue {
 	Node** elements;
 	int size;
 	int capacity;
-} MinPriorityQueu;
+} MinPriorityQueue;
+
+void die(const char *fmt, ...);
+FILE* open_file(const char* file);
+int* count_occurences(const char* input);
+int min_in_occ(int* occurences);
+void _log_occurences(int* occurences);
+Node* init_node(int weight);
+Node* init_internal_node(Node* left, Node* right);
+MinPriorityQueue* init_queue();
+MinPriorityQueue* add_occ_to_queue(
+ MinPriorityQueue* queue, const char c, const int freq);
+MinPriorityQueue* priority_sort(int* occurences);
+void remove_node_in_queue(MinPriorityQueue* queue, int i);
+void rearrange_queue(MinPriorityQueue* queue);
+void min_heap_insert(MinPriorityQueue* queue, Node* node);
+Node* get_internal_node_from_queue(MinPriorityQueue* queue);
+HuffTree* init_tree();
+int get_size_tree(HuffTree* tree);
+HuffTree* build_huff_tree(MinPriorityQueue* queue);
+Node* node_from_tree(HuffTree* tree, int i);
+void _log_tree(HuffTree* tree);
+void free_node(Node* node);
+void free_queue(MinPriorityQueue* queue);
+void free_tree(HuffTree* tree);
+void process_input(int argc, char** argv, InputData* input);
 
 void die(const char *fmt, ...) {
 	va_list ap;
@@ -53,19 +93,11 @@ FILE* open_file(const char* file) {
 	} else {
 		die("error: file not found");
 	}
-
-	return fp;
-}
-
-int* count_occurences(const char* input) {
-	int length = strlen(input);
-	int* occurences = malloc(OCC_SIZE);
-
-	for (int i = 0; i < length; i++) {
-		occurences[(int)input[i]]++;
+	if (fp == NULL) {
+		die("error: opening file");
 	}
 
-	return occurences;
+	return fp;
 }
 
 void _log_occurences(int* occurences) {
@@ -76,10 +108,33 @@ void _log_occurences(int* occurences) {
 	}
 }
 
+int* count_occurences(const char* input) {
+
+	int length = strlen(input);
+	int* occurences = calloc(OCC_SIZE * sizeof(int), sizeof(int));
+
+	for (int i = 0; i < length; i++) {
+		occurences[(int)input[i]]++;
+	}
+
+	return occurences;
+}
+
 int min_in_occ(int* occurences) {
 	int min = 0;
 
+	// look for first character with occurence
 	for (int i = 0; i < OCC_SIZE; i++) {
+		if (occurences[i] > 0) {
+			min = i;
+		}
+		break;
+	}
+	// occurences is empty
+	if (min == 0) {
+		return -1;
+	}
+	for (int i = min; i < OCC_SIZE; i++) {
 		if (occurences[i] < occurences[min]) {
 			min = i;
 		}
@@ -107,88 +162,104 @@ Node* init_internal_node(Node* left, Node* right) {
 	return internal_node;
 }
 
+MinPriorityQueue* init_queue() {
+	MinPriorityQueue* queue = malloc(MinPriorityQueue);
+	queue->elements = malloc(QUEU_INIT_SIZE * sizeof(*Node));
+	queue->size = 0;
+	queue->capacity = QUEU_INIT_SIZE;
+
+	return queue;
+}
+
+MinPriorityQueue* add_occ_to_queue(MinPriorityQueue* queue, const char c, const int freq) {
+	if (queue->size >= queue->capacity) {
+		queue->size *= 2;
+		queue->elements = realloc(queue->elements, queue->size);
+	}
+
+	queue->elements[queue->size] = init_node(freq);
+	queue->elements[queue->size]->element = c;
+	queue->size++;
+
+	return queue;
+}
+
+MinPriorityQueue* priority_sort(int* occurences) {
+	MinPriorityQueue* queue = init_queue();
+
+	int min_in_queue = 0;
+	while ((min_in_queue = min_in_occ(occurences)) != 0) {
+		add_occ_to_queue(queue, (char)min_in_queue, occurences[min_in_queue]);
+		occurences[min] = 0;
+	}
+
+	return queue;
+}
+
+void remove_node_in_queue(MinPriorityQueue* queue, int i) {
+	free(queue->elements[i]);
+	for (int j = i; j < (queue->size - 1); j++) {
+		queue->elements[j] = queue->elements[j+1];
+	}
+	// remove last element
+	queue->elements[queue->size] = NULL;
+	queue->size--;
+}
+
+void rearrange_queue(MinPriorityQueue* queue) {
+	for (int i = 0; i < queue->size-1; i++) {
+		if (queue->elements[i]->weight > queue->elements[i+1]->weight) {
+			Node* tmp = queue->elements[i];
+			queue->elements[i] = queue->elements[i+1];
+			queue->elements[i+1] = tmp;
+		}
+	}
+}
+
+void min_heap_insert(MinPriorityQueue* queue, Node* node) {
+    int i = queue->size++;
+    queue->elements[i] = node;
+    while (i > 0 && queue->elements[(i-1)/2]->weight > queue->elements[i]->weight) {
+        Node* tmp = queue->elements[i];
+        queue->elements[i] = queue->elements[(i-1)/2];
+        queue->elements[(i-1)/2] = tmp;
+        i = (i-1)/2;
+    }
+}
+
+Node* get_internal_node_from_queue(MinPriorityQueue* queue) {
+	Node* internal_node = init_internal_node(queue->elements[0], queue->elements[1]);
+	remove_node_in_queue(queue, 0);
+	free(queue->elements[0]);
+	queue->elements[0] = internal_node;
+	rearrange_queue(queue);
+
+	return internal_node;
+}
+
 HuffTree* init_tree() {
-	HuffTree* tree = malloc(sizeof(Node*) + sizeof(int));
+	HuffTree* tree = calloc(sizeof(HuffTree), sizeof(HuffTree));
 	tree->size = 0;
 
 	return tree;
 }
 
-MinPriorityQueu* init_queu() {
-	MinPriorityQueu* queu = malloc(sizeof(Node*) + 2 * sizeof(int));
-	queu->elements = malloc(QUEU_INIT_SIZE * sizeof(Node));
-	queu->size = 0;
-	queu->capacity = QUEU_INIT_SIZE;
-
-	return queu;
+int get_size_tree(HuffTree* tree) {
+	return 0;
 }
 
-MinPriorityQueu* add_occ_to_queu(MinPriorityQueu* queu, const char c, const int freq) {
-	if (queu->size >= queu->capacity) {
-		queu->size *= 2;
-		queu = realloc(queu, queu->size);
-	}
-
-	queu->elements[queu->size] = init_node(freq);
-	queu->elements[queu->size]->element = c;
-	queu->size++;
-
-	return queu;
-}
-
-MinPriorityQueu* priority_sort(int* occurences) {
-	MinPriorityQueu* queu = init_queu();
-
-	int min_in_queu = 0;
-	while ((min_in_queu = min_in_occ(occurences)) != 0) {
-		add_occ_to_queu(queu, (char)min_in_queu, occurences[min_in_queu]);
-	}
-
-	return queu;
-}
-
-void remove_node_in_queu(MinPriorityQueu* queu, int i) {
-	free(queu->elements[i]);
-	for (int j = i; j < (queu->size - 1); j++) {
-		queu->elements[j] = queu->elements[j+1];
-	}
-	// remove last element
-	queu->elements[queu->size] = NULL;
-	queu->size--;
-}
-
-void rearrange_queu(MinPriorityQueu* queu) {
-	for (int i = 0; i < queu->size; i++) {
-		if (queu->elements[i]->weight > queu->elements[i+1]->weight) {
-			Node* tmp = queu->elements[i];
-			queu->elements[i] = queu->elements[i+1];
-			queu->elements[i+1] = tmp;
-		}
-	}
-}
-
-Node* get_internal_node_from_queu(MinPriorityQueu* queu) {
-	Node* internal_node = init_internal_node(queu->elements[0], queu->elements[1]);
-	remove_node_in_queu(queu, 0);
-	free(queu->elements[0]);
-	queu->elements[0] = internal_node;
-	rearrange_queu(queu);
-
-	return internal_node;
-}
-
-HuffTree* build_huff_tree(MinPriorityQueu* queu) {
+HuffTree* build_huff_tree(MinPriorityQueue* queue) {
 	HuffTree* tree = init_tree();
 	Node* internal_node;
 
-	while (queu->size > 1) {
-		internal_node = get_internal_node_from_queu(queu);
+	while (queue->size > 1) {
+		internal_node = get_internal_node_from_queue(queue);
 	}
 
-	tree->root = init_node(queu->elements[0]->weight + internal_node->weight);
-	tree->root->left = queu->elements[0];
+	tree->root = init_node(queue->elements[0]->weight + internal_node->weight);
+	tree->root->left = queue->elements[0];
 	tree->root->right = internal_node;
-	tree->size = get_size(tree);
+	tree->size = get_size_tree(tree);
 
 	return tree;
 }
@@ -220,15 +291,16 @@ void free_node(Node* node) {
 	if (node->left != NULL) {
 		free_node(node->left);
 	}
+	free(node);
 }
 
-void free_queu(MinPriorityQueu* queu) {
-	for (int i = 0; i < queu->size; i++) {
-		free(queu->elements[i]);
+void free_queue(MinPriorityQueue* queue) {
+	for (int i = 0; i < queue->size; i++) {
+		free(queue->elements[i]);
 	}
-	queu->size = 0;
-	queu->capacity = 0;
-	free(queu);
+	queue->size = 0;
+	queue->capacity = 0;
+	free(queue);
 }
 
 void free_tree(HuffTree* tree) {
@@ -237,28 +309,51 @@ void free_tree(HuffTree* tree) {
 	free(tree);
 }
 
+void process_input(int argc, char** argv, InputData* input) {
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "-d") || !strcmp(argv[i], "--debug")) {
+			input->flags = input->flags || DEBUG_FLAG;
+		} else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
+			die(HELP_MESSAGE);
+		} else {
+			input->filename = argv[i];
+		}
+	}
+}
+
 int main(int argc, char** argv) {
-	if (argc == 1) {
+	InputData* input_data = malloc(sizeof(InputData));
+	input_data->flags = 0;
+	input_data->filename = "";
+
+	if (argc >= 2) {
+		process_input(argc, argv, input_data);
+		if (IS_DEBUG(input_data->flags)) {
+			printf("%s", input_data->filename);
+		}
+	}
+	if (argc == 1 || strlen(input_data->filename) == 0) {
 		die("which file?");
 	}
 
-	FILE* fp = open_file(argv[1]);
-	char* buffer = calloc(BUF_INIT_SIZE * sizeof(char), sizeof(char));
-	MinPriorityQueu* queu;
+	FILE* fp = open_file(input_data->filename);
+	char* buffer = calloc(BUF_INIT_SIZE, sizeof(char));
+	MinPriorityQueue* queue;
 	HuffTree* tree;
 	int* occurences;
 
 	while (fread(buffer, 1, BUF_INIT_SIZE, fp) > 0) {
 		occurences = count_occurences(buffer);
-		queu = priority_sort(occurences);
-		tree = build_huff_tree(queu);
+		if (IS_DEBUG(input_data->flags)) _log_occurences(occurences);
+		queue = priority_sort(occurences);
+		tree = build_huff_tree(queue);
 		_log_tree(tree);
 	}
 
 	fclose(fp);
 	free(occurences);
 	free(buffer);
-	free_queu(queu);
+	free_queue(queue);
 	free_tree(tree);
 
 	return 0;

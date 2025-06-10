@@ -1,6 +1,7 @@
 tags*
+hcomp
 huffman-compress
-test*
+*test*
 .vscode
 build
 *.exe
