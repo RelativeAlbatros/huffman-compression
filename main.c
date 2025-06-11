@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <limits.h>
 
 #define VERSION "0.1"
 #define HELP_MESSAGE \
@@ -17,7 +18,7 @@
 
 #define BUF_INIT_SIZE 2048
 #define OCC_SIZE CHAR_MAX
-#define QUEU_INIT_SIZE 2048
+#define QUEUE_INIT_SIZE 2048
 #define TREE_INIT_SIZE 32
 
 typedef struct Node {
@@ -48,7 +49,7 @@ FILE* open_file(const char* file);
 int* count_occurences(const char* input);
 int min_in_occ(int* occurences);
 void _log_occurences(int* occurences);
-Node* init_node(int weight);
+Node* init_node(char element, int weight);
 Node* init_internal_node(Node* left, Node* right);
 MinPriorityQueue* init_queue();
 MinPriorityQueue* add_occ_to_queue(
@@ -127,15 +128,15 @@ int min_in_occ(int* occurences) {
 	for (int i = 0; i < OCC_SIZE; i++) {
 		if (occurences[i] > 0) {
 			min = i;
+			break;
 		}
-		break;
 	}
 	// occurences is empty
 	if (min == 0) {
 		return -1;
 	}
 	for (int i = min; i < OCC_SIZE; i++) {
-		if (occurences[i] < occurences[min]) {
+		if ((occurences[i] < occurences[min]) && (occurences[i] > 0)) {
 			min = i;
 		}
 	}
@@ -143,9 +144,9 @@ int min_in_occ(int* occurences) {
 	return min;
 }
 
-Node* init_node(int weight) {
+Node* init_node(char element, int weight) {
 	Node* node = malloc(sizeof(Node));
-	node->element = '\0';
+	node->element = element;
 	node->weight = weight;
 	node->right = node->left = NULL;
 
@@ -163,10 +164,10 @@ Node* init_internal_node(Node* left, Node* right) {
 }
 
 MinPriorityQueue* init_queue() {
-	MinPriorityQueue* queue = malloc(MinPriorityQueue);
-	queue->elements = malloc(QUEU_INIT_SIZE * sizeof(*Node));
+	MinPriorityQueue* queue = malloc(sizeof(MinPriorityQueue));
+	queue->elements = malloc(QUEUE_INIT_SIZE * sizeof(Node*));
 	queue->size = 0;
-	queue->capacity = QUEU_INIT_SIZE;
+	queue->capacity = QUEUE_INIT_SIZE;
 
 	return queue;
 }
@@ -177,8 +178,7 @@ MinPriorityQueue* add_occ_to_queue(MinPriorityQueue* queue, const char c, const 
 		queue->elements = realloc(queue->elements, queue->size);
 	}
 
-	queue->elements[queue->size] = init_node(freq);
-	queue->elements[queue->size]->element = c;
+	queue->elements[queue->size] = init_node(c, freq);
 	queue->size++;
 
 	return queue;
@@ -188,9 +188,9 @@ MinPriorityQueue* priority_sort(int* occurences) {
 	MinPriorityQueue* queue = init_queue();
 
 	int min_in_queue = 0;
-	while ((min_in_queue = min_in_occ(occurences)) != 0) {
+	while ((min_in_queue = min_in_occ(occurences)) > 0) {
 		add_occ_to_queue(queue, (char)min_in_queue, occurences[min_in_queue]);
-		occurences[min] = 0;
+		occurences[min_in_queue] = 0;
 	}
 
 	return queue;
@@ -256,7 +256,7 @@ HuffTree* build_huff_tree(MinPriorityQueue* queue) {
 		internal_node = get_internal_node_from_queue(queue);
 	}
 
-	tree->root = init_node(queue->elements[0]->weight + internal_node->weight);
+	tree->root = init_node('\0', queue->elements[0]->weight + internal_node->weight);
 	tree->root->left = queue->elements[0];
 	tree->root->right = internal_node;
 	tree->size = get_size_tree(tree);
