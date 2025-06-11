@@ -112,7 +112,7 @@ void _log_occurences(int* occurences) {
 int* count_occurences(const char* input) {
 
 	int length = strlen(input);
-	int* occurences = calloc(OCC_SIZE * sizeof(int), sizeof(int));
+	int* occurences = calloc(OCC_SIZE, sizeof(int));
 
 	for (int i = 0; i < length; i++) {
 		occurences[(int)input[i]]++;
@@ -174,8 +174,9 @@ MinPriorityQueue* init_queue() {
 
 MinPriorityQueue* add_occ_to_queue(MinPriorityQueue* queue, const char c, const int freq) {
 	if (queue->size >= queue->capacity) {
-		queue->size *= 2;
-		queue->elements = realloc(queue->elements, queue->size);
+		queue->capacity *= 2;
+		queue->elements = realloc(queue->elements, queue->capacity * sizeof(Node*));
+		if (!queue->elements) die("queue reallocation failed.");
 	}
 
 	queue->elements[queue->size] = init_node(c, freq);
@@ -238,7 +239,7 @@ Node* get_internal_node_from_queue(MinPriorityQueue* queue) {
 }
 
 HuffTree* init_tree() {
-	HuffTree* tree = calloc(sizeof(HuffTree), sizeof(HuffTree));
+	HuffTree* tree = calloc(1, sizeof(HuffTree));
 	tree->size = 0;
 
 	return tree;
@@ -276,13 +277,18 @@ void _log_tree(HuffTree* tree) {
 	for (int i = tree->size - 1; i >= 0; i++) {
 		current_node = node_from_tree(tree, i);
 		printf("internal node %d:%d\n", i, current_node->weight);
-		printf("with children left (%c:%d) and right (%c:%d)\n", 
-				current_node->left->element, current_node->left->weight,
+		if (current_node->left != NULL) {
+			printf("with children left (%c:%d)",
+				current_node->left->element, current_node->left->weight);
+		} if (current_node->right != NULL) {
+			printf("and right (%c:%d)\n", 
 				current_node->right->element, current_node->right->weight);
+		}
 	}
 }
 
 void free_node(Node* node) {
+	if (node == NULL) return;
 	node->element = '\0';
 	node->weight = 0;
 	if (node->right != NULL) {
